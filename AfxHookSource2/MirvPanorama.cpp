@@ -1,0 +1,407 @@
+#include "stdafx.h"
+
+#include "MirvPanorama.h"
+
+#include "Globals.h"
+#include "WrpConsole.h"
+
+#include "../deps/release/prop/AfxHookSource/SourceSdkShared.h"
+#include "../deps/release/prop/cs2/sdk_src/public/tier1/utlmap.h"
+#include "../deps/release/prop/cs2/sdk_src/public/tier1/utlstring.h"
+#include "../shared/binutils.h"
+
+#include "addresses.h"
+
+#include <Windows.h>
+#include <stdint.h>
+#include <string.h>
+
+static void* g_CStylePropertyOpacity_vtable = 0;
+static void* g_CStylePropertyVisible_vtable = 0;
+static void* g_CStylePropertyPosition_vtable = 0;
+static void** g_PanoramaUIEngine = nullptr;
+
+typedef void(__fastcall *g_CPanelStyleSetStyleProperty_t)(void* This, void* property, bool transition);
+static g_CPanelStyleSetStyleProperty_t g_CPanelStyleSetStyleProperty = nullptr;
+static HMODULE g_StylePropertiesModule = nullptr;
+static bool g_StylePropertiesReady = false;
+
+static bool EnsureStyleProperties() {
+	// Panorama hooks may have been installed while POV was disabled. Discover
+	// the optional style API when its first real consumer needs it instead.
+	return MirvPanorama_InitStyleProperties(GetModuleHandleW(L"panorama.dll"));
+}
+
+struct StylePropertySymbolMap {
+	typedef uint8_t* (__fastcall *Resolve_t)(uint8_t* out, const char* stylePropertyName);
+
+	uint8_t findSymbol(const char* stylePropertyName) {
+		if(resolve) {
+			uint8_t result = 0xFF;
+			resolve(&result, stylePropertyName);
+			return result;
+		}
+
+		if(!symbols) return 0xFF;
+
+		for(int i = 0; i < symbols->numElements; ++i) {
+			if(strcmp(symbols->memory[i].key.Get(), stylePropertyName) == 0) return symbols->memory[i].value;
+		}
+
+		return 0xFF;
+	}
+
+	Resolve_t resolve = nullptr;
+	SOURCESDK::CS2::CUtlMap<SOURCESDK::CS2::CUtlString, uint8_t>* symbols = nullptr;
+} g_PanoramaStylePropertySymbols;
+
+#if AFX_MIRV_POV_DIAGNOSTICS
+
+CON_COMMAND(__mirv_panorama_dump_style_symbols, "") {
+	auto symbols = g_PanoramaStylePropertySymbols.symbols;
+	if(!symbols) {
+		advancedfx::Warning("AFXWARNING: Panorama style-symbol dumping is unavailable for this CS2 build.\n");
+		return;
+	}
+
+	for(int i = 0; i < symbols->numElements; ++i) {
+		auto node = symbols->memory[i];
+		advancedfx::Message("%i: %s\n", node.value, node.key.Get());
+	}
+}
+
+#endif
+
+struct StylePropertyOpacity {
+	void* vtable;
+	uint8_t id;
+	bool disallowTransition = false;
+	u_char pad[0x6]{};
+	float value;
+
+	StylePropertyOpacity() {}
+
+	StylePropertyOpacity(void* vt, uint8_t i, float v)
+		: vtable(vt), id(i), value(v) {}
+};
+
+struct StylePropertyVisible {
+	void* vtable;
+	uint8_t id;
+	bool disallowTransition = false;
+	u_char pad[0x6]{};
+	uint16_t value;
+
+	StylePropertyVisible() {}
+
+	StylePropertyVisible(void* vt, uint8_t i, bool v)
+		: vtable(vt), id(i), value(v ? 0x0101 : 0x0001) {}
+};
+
+struct StylePropertyPosition {
+	void* vtable;
+	uint8_t id;
+	bool disallowTransition = false;
+	u_char pad[0x6]{};
+	float x = 0.0f;
+	uint32_t xUnit = 0;
+	float y = 0.0f;
+	uint32_t yUnit = 0;
+	float z = 0.0f;
+	uint32_t zUnit = 0;
+
+	StylePropertyPosition() {}
+
+	StylePropertyPosition(void* vt, uint8_t i, float v)
+		: vtable(vt), id(i), x(v), xUnit(1) {}
+};
+
+static_assert(sizeof(StylePropertyPosition) == 40, "Unexpected Panorama position-property layout.");
+
+static bool makeOpacityProperty(StylePropertyOpacity* out, float value) {
+	auto id = g_PanoramaStylePropertySymbols.findSymbol("opacity");
+	if(g_CStylePropertyOpacity_vtable == nullptr || id == 0xFF) return false;
+
+	*out = StylePropertyOpacity { g_CStylePropertyOpacity_vtable, id, value };
+
+	return true;
+}
+
+static bool makeVisibleProperty(StylePropertyVisible* out, bool value) {
+	auto id = g_PanoramaStylePropertySymbols.findSymbol("visibility");
+	if(g_CStylePropertyVisible_vtable == nullptr || id == 0xFF) return false;
+
+	*out = StylePropertyVisible { g_CStylePropertyVisible_vtable, id, value };
+
+	return true;
+}
+
+static bool makeXProperty(StylePropertyPosition* out, float value) {
+	auto id = g_PanoramaStylePropertySymbols.findSymbol("x");
+	if(g_CStylePropertyPosition_vtable == nullptr || id == 0xFF) return false;
+
+	*out = StylePropertyPosition { g_CStylePropertyPosition_vtable, id, value };
+
+	return true;
+}
+
+struct CUIPanel {
+	bool setOpacity(float value) {
+		if(!EnsureStyleProperties()) return false;
+		auto style = reinterpret_cast<u_char*>(this) + CS2::PanoramaUIPanel::panelStyle;
+
+		StylePropertyOpacity styleProp;
+		if(!makeOpacityProperty(&styleProp, value)) return false;
+
+		g_CPanelStyleSetStyleProperty(style, &styleProp, true);
+
+		return true;
+	}
+
+	bool setVisible(bool value) {
+		if(!EnsureStyleProperties()) return false;
+		auto style = reinterpret_cast<u_char*>(this) + CS2::PanoramaUIPanel::panelStyle;
+
+		StylePropertyVisible styleProp;
+		if(!makeVisibleProperty(&styleProp, value)) return false;
+
+		g_CPanelStyleSetStyleProperty(style, &styleProp, true);
+
+		return true;
+	}
+
+	bool setX(float value) {
+		if(!EnsureStyleProperties()) return false;
+		auto style = reinterpret_cast<u_char*>(this) + CS2::PanoramaUIPanel::panelStyle;
+
+		StylePropertyPosition styleProp;
+		if(!makeXProperty(&styleProp, value)) return false;
+
+		g_CPanelStyleSetStyleProperty(style, &styleProp, true);
+
+		return true;
+	}
+};
+
+namespace CS2 {
+	namespace PanoramaUIPanel {
+		ptrdiff_t getAttributeString = 0;
+		ptrdiff_t setAttributeString = 0;
+		void** hudPanel = nullptr;
+	}
+
+	namespace PanoramaPanelStyle {
+		ptrdiff_t setPanelStyleProperty = 0;
+	}
+
+	namespace PanoramaUIEngine {
+		ptrdiff_t makeSymbol = 0;
+	}
+};
+
+void MirvPanorama_SetHudPanel(void** value) {
+	if(CS2::PanoramaUIPanel::hudPanel != value) CS2::PanoramaUIPanel::hudPanel = value;
+}
+
+void MirvPanorama_SetUIEngine(void** value) {
+	if(g_PanoramaUIEngine != value) g_PanoramaUIEngine = value;
+}
+
+void** MirvPanorama_GetHudPanel() {
+	return CS2::PanoramaUIPanel::hudPanel;
+}
+
+void** MirvPanorama_GetUIEngine() {
+	return g_PanoramaUIEngine;
+}
+
+void** DeathMsg_GetPanoramaHudPanel() {
+	return MirvPanorama_GetHudPanel();
+}
+
+void** DeathMsg_GetPanoramaUIEngine() {
+	return MirvPanorama_GetUIEngine();
+}
+
+static bool Panorama_MakeSymbol(const char* name, short& value) {
+	if(!name || !g_PanoramaUIEngine || !*g_PanoramaUIEngine || !CS2::PanoramaUIEngine::makeSymbol) return false;
+
+	typedef short(__fastcall * MakeSymbol_t)(void*, int, const char*);
+	auto uiEngine = *g_PanoramaUIEngine;
+	auto vtable = *(unsigned char**)uiEngine;
+	if(!vtable) return false;
+
+	auto makeSymbol = *(MakeSymbol_t*)(vtable + CS2::PanoramaUIEngine::makeSymbol);
+	if(!makeSymbol) return false;
+
+	value = makeSymbol(uiEngine, 0, name);
+	return value != (short)-1;
+}
+
+bool Panorama_SetPanelClass(void* panel, const char* className, bool value) {
+	if(!panel || !className) return false;
+
+	short classSymbol = -1;
+	if(!Panorama_MakeSymbol(className, classSymbol)) return false;
+
+	typedef void (__fastcall * SetPanelClass_t)(void*, short);
+	typedef bool (__fastcall * HasPanelClass_t)(void*, short);
+	auto vtable = *(void***)panel;
+	if(!vtable) return false;
+
+	auto setPanelClass = (SetPanelClass_t)vtable[value ? 144 : 147];
+	auto hasPanelClass = (HasPanelClass_t)vtable[157];
+	if(!setPanelClass || !hasPanelClass) return false;
+
+	setPanelClass(panel, classSymbol);
+	return hasPanelClass(panel, classSymbol) == value;
+}
+
+bool Panorama_HasPanelClass(void* panel, const char* className) {
+	if(!panel || !className) return false;
+
+	short classSymbol = -1;
+	if(!Panorama_MakeSymbol(className, classSymbol)) return false;
+
+	auto vtable = *(void***)panel;
+	if(!vtable) return false;
+
+	typedef bool (__fastcall * HasPanelClass_t)(void*, short);
+	auto hasPanelClass = (HasPanelClass_t)vtable[157];
+	return nullptr != hasPanelClass && hasPanelClass(panel, classSymbol);
+}
+
+bool Panorama_SetPanelOpacity(void* panel, float value) {
+	if(!panel) return false;
+	return ((CUIPanel*)panel)->setOpacity(value);
+}
+
+bool Panorama_SetPanelVisible(void* panel, bool value) {
+	if(!panel) return false;
+	return ((CUIPanel*)panel)->setVisible(value);
+}
+
+bool Panorama_SetPanelX(void* panel, float value) {
+	if(!panel) return false;
+	return ((CUIPanel*)panel)->setX(value);
+}
+
+size_t MirvPanorama_ResolveStyleSetter(HMODULE panoramaDll) {
+    if(!panoramaDll) return 0;
+    size_t target = 0;
+    for(Afx::BinUtils::ImageSectionsReader sections(panoramaDll); !sections.Eof(); sections.Next()) {
+        if(!(sections.Get()->Characteristics & IMAGE_SCN_MEM_EXECUTE)) continue;
+        const auto text = sections.GetMemRange();
+        auto remaining = text;
+        while(!remaining.IsEmpty()) {
+            const auto match = Afx::BinUtils::FindPatternString(remaining,
+                "E8 ?? ?? ?? ?? 48 8D 05 ?? ?? ?? ?? 48 89 45 ?? EB");
+            if(match.IsEmpty()) break;
+            const auto candidate = match.Start + 5 + *reinterpret_cast<const int32_t *>(match.Start + 1);
+            if(candidate < text.Start || candidate >= text.End || (target && candidate != target)) return 0;
+            target = candidate;
+            remaining.Start = match.Start + 1;
+        }
+    }
+    return target;
+}
+
+bool MirvPanorama_InitStyleProperties(HMODULE panoramaDll) {
+	// Do not latch a missing module: a later call after load must retry. Cache
+	// both success and failure for a loaded module to avoid per-frame scans or
+	// repeated warnings on unsupported builds. Never use partially found APIs.
+	if(!panoramaDll) return false;
+	if(g_StylePropertiesModule == panoramaDll) return g_StylePropertiesReady;
+	g_StylePropertiesModule = panoramaDll;
+	g_StylePropertiesReady = false;
+	g_CStylePropertyOpacity_vtable = nullptr;
+	g_CStylePropertyVisible_vtable = nullptr;
+	g_CStylePropertyPosition_vtable = nullptr;
+	g_CPanelStyleSetStyleProperty = nullptr;
+	g_PanoramaStylePropertySymbols.resolve = nullptr;
+	g_PanoramaStylePropertySymbols.symbols = nullptr;
+	{
+		g_CStylePropertyOpacity_vtable = (void**)Afx::BinUtils::FindClassVtable(panoramaDll, ".?AVCStylePropertyOpacity@panorama@@", 0, 0);
+		if(nullptr == g_CStylePropertyOpacity_vtable) {
+			advancedfx::Warning("AFXWARNING: Panorama opacity style unavailable; style writes disabled.\n");
+			return false;
+		}
+	}
+
+	{
+		g_CStylePropertyVisible_vtable = (void**)Afx::BinUtils::FindClassVtable(panoramaDll, ".?AVCStylePropertyVisible@panorama@@", 0, 0);
+		if(nullptr == g_CStylePropertyVisible_vtable) {
+			advancedfx::Warning("AFXWARNING: Panorama visibility style unavailable; style writes disabled.\n");
+			return false;
+		}
+	}
+
+	{
+		g_CStylePropertyPosition_vtable = (void**)Afx::BinUtils::FindClassVtable(panoramaDll, ".?AVCStylePropertyPosition@panorama@@", 0, 0);
+		if(nullptr == g_CStylePropertyPosition_vtable) {
+			advancedfx::Warning("AFXWARNING: Panorama position style is unavailable; POV buy-menu layout correction is disabled.\n");
+		}
+	}
+
+	{
+		auto addr = getAddress(panoramaDll, "40 55 56 57 41 54 48 8D 6C 24 ?? 48 81 EC ?? ?? ?? ?? 44 8B 05 ?? ?? ?? ?? 48 8B F9 65 48 8B 04 25 58 00 00 00 45 33 E4 C6 01 FF 48 8B F2");
+		if(addr) g_PanoramaStylePropertySymbols.resolve = (StylePropertySymbolMap::Resolve_t)addr;
+	}
+
+	{
+		auto addr = getAddress(panoramaDll, "0f 10 45 f7 48 8d 0d ?? ?? ?? ?? 41 f7 c0 ff ff ff 7f");
+		if(0 == addr) {
+			if(!g_PanoramaStylePropertySymbols.resolve) {
+				advancedfx::Warning("AFXWARNING: Panorama style-symbol lookup unavailable; style writes disabled.\n");
+				return false;
+			}
+			advancedfx::Warning("AFXWARNING: Panorama style-symbol map is unavailable; style lookup will use the resolver.\n");
+		} else {
+			auto out = addr + 11 + *(int32_t*)(addr + 7);
+			g_PanoramaStylePropertySymbols.symbols = (SOURCESDK::CS2::CUtlMap<SOURCESDK::CS2::CUtlString, uint8_t>*)out;
+		}
+	}
+
+	{
+		auto addr = MirvPanorama_ResolveStyleSetter(panoramaDll);
+		if(!addr) {
+			advancedfx::Warning("AFXWARNING: Panorama style setter unavailable; style writes disabled.\n");
+			return false;
+		}
+
+		g_CPanelStyleSetStyleProperty = (g_CPanelStyleSetStyleProperty_t)addr;
+	}
+
+	g_StylePropertiesReady = true;
+	advancedfx::Message("[mirv_panorama] style properties ready (on-demand initialization supported).\n");
+	return true;
+}
+
+	void * MirvPanorama_FindChildInLayoutFile(void * parent, const char* idToFind){
+		auto parentPanel=static_cast<unsigned char *>(parent);
+        if (!parentPanel) return nullptr;
+
+		const auto children = parentPanel + CS2::PanoramaUIPanel::children;
+		if (!children) return nullptr;
+
+		for (int i = 0; i < *(int*)children; ++i) {
+			const auto panel = ((u_char***)children)[1][i];
+			const auto panelId = *(char**)(panel + CS2::PanoramaUIPanel::panelId);
+			if (!panelId) continue;
+			if (strcmp(panelId, idToFind) == 0) {
+				return panel;
+			};
+		}
+
+		for (int i = 0; i < *(int*)children; ++i) {
+			const auto panel = ((u_char***)children)[1][i];
+			const auto panelFlags = *(u_char *)(panel + CS2::PanoramaUIPanel::panelFlags);
+			if ((panelFlags & CS2::PanoramaUIPanel::k_EPanelFlag_HasOwnLayoutFile) == 0) {
+				if (const auto found = MirvPanorama_FindChildInLayoutFile(panel, idToFind)) {
+					return found;
+				}
+			}
+		}
+
+		return nullptr;
+	};

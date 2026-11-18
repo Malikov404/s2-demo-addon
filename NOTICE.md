@@ -71,9 +71,17 @@ or change the AGPL-3.0-only distribution of the combined POV plugin. The public
 C API header and generic event converter retain MIT.
 
 For every CS.CHRONO plugin binary release, provide the matching source archive,
-including required dependency files, build materials and notices. The archive's
-`SOURCE-MANIFEST.json` identifies its base commit, working-tree modifications,
-dependency revisions, file hashes and the DLL built for that snapshot. Build
+including required dependency files, build materials and notices. The binary package's
+`RELEASE.json` identifies the exact public source revision, API version and DLL
+hash; `SHA256SUMS.txt` identifies both matching release archives. Build
 instructions are in `README.md`; component license texts and notices are
 preserved in `LICENSES/`, the SDK headers and the Detours source directory.
 Project: https://github.com/Malikov404/cs.chrono-plugin
+
+## Included dependency sources
+
+- `deps/release/prop`: https://github.com/advancedfx/advancedfx-prop.git at `43f0981bd7a970b783b8d94f85feb6adc45fc229`.
+- `deps/release/Detours`: https://github.com/advancedfx/Detours at `4b8c659f549b0ab21cf649377c7a84eb708f5e68`.
+
+Only required source/header files are vendored. Preserve their original notices
+when updating them; no submodule download is needed for a source release.

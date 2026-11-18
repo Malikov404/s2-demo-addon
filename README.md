@@ -11,7 +11,7 @@ optional. For offline demos only; do not join VAC-protected servers with HLAE.
 ## Build
 
 Requires Visual Studio 2022 with Desktop development with C++, a Windows SDK,
-and CMake 3.24+. Required dependency source files are included in this tree.
+and CMake 3.24+. The source release includes the required dependency files.
 Run from the repository root:
 
 ```powershell
@@ -20,8 +20,10 @@ cmake --build build/pov-plugin --config Release
 cmake --install build/pov-plugin --config Release --component pov-plugin --prefix build/package
 ```
 
-DLL output: `build/pov-plugin/Release/pov_plugin.dll`. Source hashes, dependency
-revisions and build tool versions are recorded in `SOURCE-MANIFEST.json`.
+DLL output: `build/pov-plugin/Release/pov_plugin.dll`. Each release pairs the
+binary ZIP with the exact source ZIP and SHA256SUMS.txt. RELEASE.json in the
+binary package records its source revision, API version and DLL hash.
+Dependency source revisions are retained in NOTICE.md.
 
 ## Use
 
@@ -40,7 +42,7 @@ mirv_pov_plugin 0
 The main switch defaults to off. Optional replay: `mirv_pov_plugin setting
 scoreboard 1` or `mirv_pov_plugin setting buymenu 1`. Independent effects use
 `mirv_pov_debug_feature <name> 0|1`; names/defaults are in
-[MirvPovFeatures.h](AfxHookSource2/MirvPovFeatures.h). Game updates may affect
+`AfxHookSource2/MirvPovFeatures.h` in the source tree. Game updates may affect
 individual native mechanisms; check the selected effects in a local demo.
 
 ## License

@@ -180,6 +180,7 @@ class Index {
     std::map<int, Descriptor> m_Descriptors;
     std::vector<Round> m_Rounds;
     bool m_HasPrestart = false;
+    bool m_HasRoundStart = false;
     void Descriptors(View b) {
         Proto list(b); Field f;
         while(list.Next(f)) if(f.number == 1 && f.wire == 2) {
@@ -215,10 +216,11 @@ class Index {
                 if(descriptor.keys[i] == name) return values[i];
             return {};
         };
-        // GOTV does not necessarily record round_start/end. round_prestart is
-        // the authoritative boundary in that stream; runtime GameRules decides
-        // whether this round has actually ended before the HUD calls At().
-        if(descriptor.name == "round_prestart" || (descriptor.name == "round_start" && !m_HasPrestart)) {
+        // Some GOTV demos record only the end of freeze time. Prefer an
+        // earlier boundary when present; GameRules still controls report visibility.
+        if(descriptor.name == "round_prestart" || (descriptor.name == "round_start" && !m_HasPrestart)
+            || (descriptor.name == "round_freeze_end" && !m_HasRoundStart)) {
+            if(descriptor.name != "round_freeze_end") m_HasRoundStart = true;
             if(descriptor.name == "round_prestart") m_HasPrestart = true;
             if(m_Rounds.size() >= 1024) throw std::runtime_error("too many demo rounds");
             if(!m_Rounds.empty() && m_Rounds.back().start > tick) throw std::runtime_error("unordered demo rounds");

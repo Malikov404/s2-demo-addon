@@ -23,5 +23,6 @@ float MirvPovVoice_GameTime();
 bool MirvPovVoice_TimeReady();
 void MirvPovVoice_SetSelection(uint32_t low, uint32_t high);
 bool MirvPovVoice_IsReady();
+bool MirvPovVoice_LocationHooked();
 bool MirvPovVoice_LocationReady();
 bool MirvPovVoice_Cleanup();

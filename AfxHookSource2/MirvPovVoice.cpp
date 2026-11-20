@@ -197,7 +197,7 @@ static bool MirvPov_ResolveVoiceLocation(HMODULE clientDll) {
         return found.Start;
     };
     size_t formatter = findUnique("48 89 6C 24 ?? 48 89 74 24 ?? 48 89 7C 24 ?? 41 54 41 56 41 57 48 81 EC ?? ?? ?? ?? 49 8B F1");
-    size_t updater = findUnique("4C 8B DC 55 53 56 57 41 55 41 56 41 57 49 8D AB 68 F9 FF FF 48 81 EC 60 07 00 00");
+    size_t updater = findUnique("4C 8B DC 55 53 56 57 41 55 41 56 41 57 49 8D AB ?? ?? ?? ?? 48 81 EC ?? ?? ?? ??");
     if(!formatter || !updater || formatter + 0x270 > text.End || updater + 0x800 > text.End) return false;
     // Verify the three-row cache layout, the exact formatter call and the
     // serial-checked speaker-pawn helper before touching cached row state.
@@ -629,6 +629,7 @@ void MirvPovVoice_SetSelection(uint32_t low, uint32_t high) {
     g_MirvPovVoiceMaskHigh.previousValueSaved = false;
 }
 bool MirvPovVoice_IsReady() { return g_bMirvPovIsPlayingDemoHooked && g_bMirvPovServerVoiceDataHooked; }
+bool MirvPovVoice_LocationHooked() { return g_VoiceLocationHooked; }
 bool MirvPovVoice_LocationReady() { return g_VoiceLocationHooked && g_clientDllOffsets.C_CSPlayerPawn.m_szLastPlaceName >= 0 && MirvPov_LocalizationReady(); }
 bool MirvPovVoice_Cleanup() {
     g_PendingSpeaking.store(0);

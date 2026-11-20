@@ -320,10 +320,11 @@ bool Frame() {
             MirvPovHud_UpdateSeekDetection(g_pEngineToClient->GetDemoFile()->GetDemoTick());
     }
     if(PovPlugin_FeatureActive("voice") && PovPlugin_FeatureActive("voice_location")
-        && g_VoiceLocationAttempted && !(Ready() & POV_PLUGIN_CAP_VOICE_LOCATION)
+        && !(Ready() & POV_PLUGIN_CAP_VOICE_LOCATION) && MirvPovVoice_LocationHooked()
         && GetTickCount64() >= g_NextRetry) {
         g_NextRetry = GetTickCount64() + 1000;
-        Enable(); // Late localization readiness; installed/missing hook scans stay latched.
+        if(!g_SchemaAttempted) Prepare();
+        if(MirvPovVoice_LocationReady()) g_Ready.fetch_or(POV_PLUGIN_CAP_VOICE_LOCATION);
     }
     if(PovPlugin_FeatureActive("feedback")&&!g_FeedbackAttempted&&GetTickCount64()>=g_NextRetry) {
         g_NextRetry=GetTickCount64()+1000;Enable();

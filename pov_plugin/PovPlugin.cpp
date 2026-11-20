@@ -49,8 +49,9 @@ struct Cvars {
 };
 
 int32_t Apply(bool enabled) {
+    static MirvPovCvars::Settings settings;
     Cvars access;
-    const int result = MirvPovCvars::Apply(access, enabled);
+    const int result = settings.Apply(access, enabled);
     if(result < 0) g_Dirty = true;
     if(result > 0) g_Dirty = enabled;
     return result > 0 ? POV_PLUGIN_OK : result < 0 ? POV_PLUGIN_RESTORE_FAILED : POV_PLUGIN_UNAVAILABLE;

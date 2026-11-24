@@ -1184,12 +1184,11 @@ void MirvPovKillReward_Initialize(HMODULE clientDll)
         sections.Next(IMAGE_SCN_MEM_EXECUTE);
         if(!sections.Eof()) textRange = sections.GetMemRange();
 
-        // client.dll 40bce820: typed TextMsg handler at 0x11A3160.
-        // Its repeated-param count / item calls moved to +0xb5/+0xcc.
-        // The older broad prologue now matches an unrelated function.
+        // The typed TextMsg handler keeps its prologue shape across stack layout changes.
+        // Validate the repeated-parameter calls separately below.
         const char * textMsgHandlerPattern =
-            "48 89 4C 24 08 55 41 55 41 56 48 8D AC 24 90 E9 FF FF "
-            "B8 70 17 00 00 E8 ?? ?? ?? ?? 48 2B E0 48 89 9C 24 68 17 00 00";
+            "48 89 4C 24 08 55 41 55 41 56 48 8D AC 24 ?? ?? FF FF "
+            "B8 ?? ?? 00 00 E8 ?? ?? ?? ?? 48 2B E0 48 89 9C 24 ?? ?? 00 00";
         // Resolve the actual getter called by the native suppress check;
         // adjacent leaf getters are no longer interchangeable in this build.
         const char * getDemoControllerPattern =

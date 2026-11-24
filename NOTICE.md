@@ -49,6 +49,7 @@ WangChuDi/advancedfx, including WangChuDi's CS2 mirv_pov implementation.
 - Project: https://github.com/WangChuDi/advancedfx
 - Starting commit: `b8e51e77933dfc11bab1d2a3a4fde16ab36f03b5`
 - Upstream releases and source: https://github.com/WangChuDi/advancedfx/releases
+- TextMsg compatibility reference: [WangChuDi commit 0a50c30b](https://github.com/WangChuDi/advancedfx/commit/0a50c30b0bad8f3af99bd58a554d8aa4e63b7394).
 
 That upstream release location does not supply the matching source for a
 CS.CHRONO-modified binary. Preserve upstream file notices and authorship.

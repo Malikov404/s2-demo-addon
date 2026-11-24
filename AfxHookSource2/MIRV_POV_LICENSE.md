@@ -30,7 +30,6 @@ additionally available under the limited MIT permission in
 retain the licenses stated above. This notice does not establish the license
 boundary of other components connected to that ABI.
 
-Because the distributed `AfxHookSource2.dll` combines `mirv_pov` with the rest
-of AfxHookSource2 into one binary, that combined binary is conveyed under
-`AGPL-3.0-only`. This does not change the original license of separable
-AdvancedFX or third-party source material.
+The distributed `pov_plugin.dll` combines `mirv_pov` with its supporting code
+and is conveyed under `AGPL-3.0-only`. Separable AdvancedFX and third-party
+source material retains its original license.

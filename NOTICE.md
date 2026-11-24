@@ -10,10 +10,9 @@ only (`AGPL-3.0-only`). The exact source scope is defined in
 license scope; the full AGPL text is in `LICENSE-AGPL-3.0.txt`, with the
 provenance copy preserved in `LICENSES/MulNX-AGPL-3.0.txt`.
 
-A distributed `AfxHookSource2.dll` containing `mirv_pov` combines that feature
-with other AfxHookSource2 code in one binary. That combined binary is conveyed
-under `AGPL-3.0-only`. Separate AdvancedFX and third-party source material
-retains its original license and notices.
+The distributed `pov_plugin.dll` combines `mirv_pov` with its supporting code
+and is conveyed under `AGPL-3.0-only`. Separate AdvancedFX and third-party
+source material retains its original license and notices.
 
 ## AdvancedFX
 

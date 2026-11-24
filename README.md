@@ -45,6 +45,18 @@ scoreboard 1` or `mirv_pov_plugin setting buymenu 1`. Independent effects use
 `AfxHookSource2/MirvPovFeatures.h` in the source tree. Game updates may affect
 individual native mechanisms; check the selected effects in a local demo.
 
+## Demo playback compatibility
+
+Master off and level teardown restore the cvar values captured before the
+overlay was enabled. The damage report prefers recorded round prestart or
+start events and uses freeze end as a fallback for GOTV demos. Live GameRules
+still determines when to show the report. Voice location can become ready
+after localization initializes. Check master off/on, a second demo and
+round-end feedback using the same host and DLL you plan to ship.
+
+Use the binary and source ZIPs for the same tag when testing a published
+release. The development branch can contain fixes newer than that tag.
+
 ## License
 
 The plugin is distributed under **AGPL-3.0-only**. Original CS.CHRONO contributions

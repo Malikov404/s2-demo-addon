@@ -64,8 +64,9 @@ static bool MirvPovHud_SetPanelVisible(void* panel, bool value) {
 }
 
 static unsigned char* MirvPovHud_GetHudPanel() {
-    void ** hudPanel = MirvPanorama_GetHudPanel();
-    return hudPanel ? ((unsigned char***)hudPanel)[0][1] : nullptr;
+    const auto hudPanel = MirvPanorama_GetHudPanel();
+    const auto children = hudPanel ? static_cast<unsigned char**>(*hudPanel) : nullptr;
+    return children ? children[1] : nullptr;
 }
 
 static bool MirvPovHud_MakeSymbol(const char* name, short& value) {
